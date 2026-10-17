@@ -133,7 +133,10 @@ async function toggleGraph() {
     await updateGraph();
     setTimeout(() => {
       if (chartInstance) chartInstance.resize();
-    }, 150);
+    }, 100);
+    setTimeout(() => {
+      if (chartInstance) chartInstance.resize();
+    }, 300);
   } else {
     graphSection.classList.remove("active");
     if (window.pywebview && window.pywebview.api) {
@@ -141,6 +144,12 @@ async function toggleGraph() {
     }
   }
 }
+
+window.addEventListener("resize", () => {
+  if (chartInstance && isGraphExpanded) {
+    chartInstance.resize();
+  }
+});
 
 btnToggleGraph.addEventListener("click", toggleGraph);
 btnOpenGraphDaily.addEventListener("click", toggleGraph);

@@ -46,14 +46,22 @@ SWP_NOACTIVATE = 0x0010
 
 def get_top_right_coords(widget_width: int = 370, widget_height: int = 260, margin: int = 20) -> tuple[int, int]:
     """
-    Computes top-right screen coordinates taking the Windows taskbar into account.
+    Computes top-right screen coordinates in logical pixels taking the Windows taskbar into account.
     """
     try:
         rect = wintypes.RECT()
         ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)
-        pos_x = rect.right - widget_width - margin
-        pos_y = rect.top + margin
-        return int(pos_x), int(pos_y)
+        hdc = ctypes.windll.user32.GetDC(0)
+        dpi = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)
+        ctypes.windll.user32.ReleaseDC(0, hdc)
+        scale = (dpi / 96.0) if dpi > 0 else 1.0
+
+        logical_right = rect.right / scale
+        logical_top = rect.top / scale
+
+        pos_x = int(logical_right - widget_width - margin)
+        pos_y = int(logical_top + margin)
+        return pos_x, pos_y
     except Exception as e:
         logger.warning(f"Could not calculate work area, using fallback: {e}")
         return 1800, 20
@@ -61,13 +69,13 @@ def get_top_right_coords(widget_width: int = 370, widget_height: int = 260, marg
 
 class WidgetApi:
     def __init__(self):
-        self.config = load_config()
-        self.client = FritzClient(
-            host=self.config.get("host", "192.168.178.1"),
-            password=self.config.get("password", ""),
+        self._config = load_config()
+        self._client = FritzClient(
+            host=self._config.get("host", "192.168.178.1"),
+            password=self._config.get("password", ""),
         )
-        self.tracker = EnergyTracker()
-        self.latest_data: Dict[str, Any] = {
+        self._tracker = EnergyTracker()
+        self._latest_data: Dict[str, Any] = {
             "status": "offline",
             "total_power_w": 0.0,
             "total_today_kwh": 0.0,
@@ -76,14 +84,18 @@ class WidgetApi:
             "sockets": [],
             "timestamp": "--:--",
         }
-        self.main_window: Optional[webview.Window] = None
+        self._main_window: Optional[webview.Window] = None
+        self._hwnd: Optional[int] = None
         self._running = True
         self._poll_event = threading.Event()
 
     def _get_hwnd(self) -> Optional[int]:
-        if self.main_window and hasattr(self.main_window, "native"):
+        if self._hwnd:
+            return self._hwnd
+        if self._main_window and hasattr(self._main_window, "native"):
             try:
-                return self.main_window.native.Handle.ToInt64()
+                self._hwnd = self._main_window.native.Handle.ToInt64()
+                return self._hwnd
             except Exception:
                 return None
         return None
@@ -125,30 +137,30 @@ class WidgetApi:
         """
         while self._running:
             self._do_poll()
-            interval = self.config.get("interval_seconds", 60)
+            interval = self._config.get("interval_seconds", 60)
             self._poll_event.wait(timeout=max(10, interval))
             self._poll_event.clear()
 
     def _do_poll(self):
-        password = self.config.get("password", "")
+        password = self._config.get("password", "")
         if not password:
-            self.latest_data["status"] = "offline"
-            self.latest_data["error"] = "Kein Kennwort konfiguriert"
+            self._latest_data["status"] = "offline"
+            self._latest_data["error"] = "Kein Kennwort konfiguriert"
             return
 
         try:
-            self.client.password = password
-            self.client.host = self.config.get("host", "192.168.178.1")
-            devices = self.client.get_devices()
+            self._client.password = password
+            self._client.host = self._config.get("host", "192.168.178.1")
+            devices = self._client.get_devices()
 
-            selected_ains = self.config.get("socket_ains", [])
-            socket_labels = self.config.get("socket_labels", {})
+            selected_ains = self._config.get("socket_ains", [])
+            socket_labels = self._config.get("socket_labels", {})
 
             # Update readings
-            res = self.tracker.update_reading(
+            res = self._tracker.update_reading(
                 devices=devices,
                 selected_ains=selected_ains,
-                stats_callback=self.client.get_device_stats,
+                stats_callback=self._client.get_device_stats,
             )
 
             # Apply user custom labels if any
@@ -158,43 +170,43 @@ class WidgetApi:
                     sock["name"] = socket_labels[ain]
 
             res["status"] = "online"
-            self.latest_data = res
+            self._latest_data = res
 
         except Exception as e:
             logger.error(f"Poll error: {e}")
-            self.latest_data["status"] = "offline"
-            self.latest_data["error"] = str(e)
+            self._latest_data["status"] = "offline"
+            self._latest_data["error"] = str(e)
 
     # JS API Methods
     def get_latest_data(self) -> Dict[str, Any]:
-        return self.latest_data
+        return self._latest_data
 
     def get_graph_data(self) -> Dict[str, Any]:
-        history = self.tracker.get_history_for_graph()
-        socket_names = [s.get("name", "") for s in self.latest_data.get("sockets", [])]
+        history = self._tracker.get_history_for_graph()
+        socket_names = [s.get("name", "") for s in self._latest_data.get("sockets", [])]
         return {
-            "current_total_w": self.latest_data.get("total_power_w", 0.0),
-            "today_kwh": self.latest_data.get("total_today_kwh", 0.0),
+            "current_total_w": self._latest_data.get("total_power_w", 0.0),
+            "today_kwh": self._latest_data.get("total_today_kwh", 0.0),
             "history": history,
             "socket_names": socket_names,
         }
 
     def get_config(self) -> Dict[str, Any]:
-        return self.config
+        return self._config
 
     def save_config(self, new_cfg: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            self.config.update(new_cfg)
-            save_config(self.config)
-            self.client = FritzClient(
-                host=self.config.get("host", "192.168.178.1"),
-                password=self.config.get("password", ""),
+            self._config.update(new_cfg)
+            save_config(self._config)
+            self._client = FritzClient(
+                host=self._config.get("host", "192.168.178.1"),
+                password=self._config.get("password", ""),
             )
             self._do_poll()
-            if self.latest_data.get("status") == "online":
+            if self._latest_data.get("status") == "online":
                 return {"success": True}
             else:
-                return {"success": False, "error": self.latest_data.get("error", "Verbindungsfehler")}
+                return {"success": False, "error": self._latest_data.get("error", "Verbindungsfehler")}
         except Exception as err:
             return {"success": False, "error": str(err)}
 
@@ -210,9 +222,9 @@ class WidgetApi:
     def close_app(self):
         self._running = False
         self._poll_event.set()
-        if self.main_window:
+        if self._main_window:
             try:
-                self.main_window.destroy()
+                self._main_window.destroy()
             except Exception:
                 pass
 
@@ -233,7 +245,7 @@ def main():
     index_html = str((UI_DIR / "index.html").resolve())
 
     # Create Main Widget Window with easy_drag=False (drag handled via native Win32)
-    api.main_window = webview.create_window(
+    window = webview.create_window(
         title="Solar Monitor",
         url=index_html,
         js_api=api,
@@ -246,7 +258,15 @@ def main():
         easy_drag=False,
         on_top=False,
     )
+    api._main_window = window
 
+    def on_shown():
+        try:
+            api._hwnd = window.native.Handle.ToInt64()
+        except Exception:
+            pass
+
+    window.events.shown += on_shown
     webview.start()
 
 
