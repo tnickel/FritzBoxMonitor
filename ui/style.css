@@ -284,8 +284,9 @@ body {
   gap: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--border-color);
-  height: 380px;
+  height: 330px;
   flex: 1;
+  min-height: 0;
 }
 
 .graph-section.active {

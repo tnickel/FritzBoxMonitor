@@ -103,22 +103,21 @@ class WidgetApi:
 
     def resize_widget(self, width: int, height: int):
         """
-        Thread-safe Win32 window resizing that avoids COM apartment threading issues.
+        Thread-safe Win32 window resizing respecting per-monitor DPI scaling.
         """
         hwnd = self._get_hwnd()
         if hwnd:
             try:
+                dpi = ctypes.windll.user32.GetDpiForWindow(hwnd)
+                scale = (dpi / 96.0) if dpi > 0 else 1.0
+                phys_w = int(round(width * scale))
+                phys_h = int(round(height * scale))
                 ctypes.windll.user32.SetWindowPos(
-                    hwnd, 0, 0, 0, int(width), int(height),
+                    hwnd, 0, 0, 0, phys_w, phys_h,
                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE
                 )
             except Exception as err:
                 logger.error(f"Resize error: {err}")
-        elif self.main_window:
-            try:
-                self.main_window.resize(width, height)
-            except Exception:
-                pass
 
     def poll_loop(self):
         """

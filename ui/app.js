@@ -127,10 +127,13 @@ async function toggleGraph() {
   if (isGraphExpanded) {
     graphSection.classList.add("active");
     if (window.pywebview && window.pywebview.api) {
-      await window.pywebview.api.resize_widget(360, 640);
+      await window.pywebview.api.resize_widget(360, 590);
     }
     initOrUpdateChart();
     await updateGraph();
+    setTimeout(() => {
+      if (chartInstance) chartInstance.resize();
+    }, 150);
   } else {
     graphSection.classList.remove("active");
     if (window.pywebview && window.pywebview.api) {
