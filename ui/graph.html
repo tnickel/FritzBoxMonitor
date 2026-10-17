@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solar Ertrag - Live Graph</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="graph.css">
+  <script src="chart.umd.min.js"></script>
+</head>
+<body class="graph-body">
+  <div class="graph-window">
+    <header class="graph-header">
+      <div class="graph-brand">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+          <circle cx="12" cy="12" r="5"></circle>
+          <line x1="12" y1="1" x2="12" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="23"></line>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+          <line x1="1" y1="12" x2="3" y2="12"></line>
+          <line x1="21" y1="12" x2="23" y2="12"></line>
+        </svg>
+        <span>SOLAR-LEISTUNG & TAGESVERLAUF</span>
+      </div>
+      <button id="btnCloseGraph" class="icon-btn close-btn" title="Schließen">✕</button>
+    </header>
+
+    <div class="graph-stats-bar">
+      <div class="stat-pill">
+        <span class="pill-label">Aktuell</span>
+        <span class="pill-val" id="pillCurrent">-- W</span>
+      </div>
+      <div class="stat-pill">
+        <span class="pill-label">Tagessumme</span>
+        <span class="pill-val" id="pillDaily">-- kWh</span>
+      </div>
+      <div class="stat-pill">
+        <span class="pill-label">Spitzenwert</span>
+        <span class="pill-val" id="pillPeak">-- W</span>
+      </div>
+    </div>
+
+    <div class="canvas-container">
+      <canvas id="solarChart"></canvas>
+    </div>
+  </div>
+
+  <script src="graph.js"></script>
+</body>
+</html>

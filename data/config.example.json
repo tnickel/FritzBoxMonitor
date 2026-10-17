@@ -1,0 +1,11 @@
+{
+  "host": "192.168.178.1",
+  "password": "",
+  "interval_seconds": 60,
+  "socket_ains": [],
+  "socket_labels": {
+    "11657 0542758": "Garage Süd",
+    "11657 0542752": "Garage Ost",
+    "11657 0529057": "Schuppen"
+  }
+}

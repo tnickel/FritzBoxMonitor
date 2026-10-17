@@ -1,0 +1,87 @@
+.graph-body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #070a13;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.graph-window {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(160deg, #0d1527 0%, #060912 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-sizing: border-box;
+}
+
+.graph-header {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  background: rgba(19, 27, 46, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  -webkit-app-region: drag;
+}
+
+.graph-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: #e2e8f0;
+}
+
+.graph-header .icon-btn {
+  -webkit-app-region: no-drag;
+}
+
+.graph-stats-bar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(15, 23, 42, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stat-pill {
+  flex: 1;
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pill-label {
+  font-size: 9px;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.pill-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-top: 1px;
+}
+
+.canvas-container {
+  flex: 1;
+  padding: 10px 14px 12px 14px;
+  position: relative;
+  min-height: 0;
+}
+
+#solarChart {
+  width: 100% !important;
+  height: 100% !important;
+}

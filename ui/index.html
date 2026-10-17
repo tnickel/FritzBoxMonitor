@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solar Monitor</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="widget-container" id="widgetContainer">
+    <!-- Header (Draggable) -->
+    <header class="widget-header" id="widgetHeader">
+      <div class="brand">
+        <span class="status-dot online" id="statusDot" title="Fritz!Box verbunden"></span>
+        <span class="brand-title">SOLAR MONITOR</span>
+      </div>
+      <div class="actions">
+        <button id="btnToggleGraph" class="icon-btn" title="Live-Graph ein-/ausklappen">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+        </button>
+        <button id="btnSettings" class="icon-btn" title="Einstellungen">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+        <button id="btnClose" class="icon-btn close-btn" title="Beenden">✕</button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="widget-content">
+      <!-- 3 Instantaneous Values (Oben 3 Werte) -->
+      <section class="sockets-grid">
+        <div class="socket-card slot-1" id="cardSocket1">
+          <div class="socket-label" id="nameSocket1">Garage Süd</div>
+          <div class="socket-val"><span id="valSocket1">--</span> <small>W</small></div>
+        </div>
+        <div class="socket-card slot-2" id="cardSocket2">
+          <div class="socket-label" id="nameSocket2">Garage Ost</div>
+          <div class="socket-val"><span id="valSocket2">--</span> <small>W</small></div>
+        </div>
+        <div class="socket-card slot-3" id="cardSocket3">
+          <div class="socket-label" id="nameSocket3">Schuppen</div>
+          <div class="socket-val"><span id="valSocket3">--</span> <small>W</small></div>
+        </div>
+      </section>
+
+      <!-- Total Current Power -->
+      <section class="totals-section">
+        <div class="total-current-badge">
+          <span class="badge-label">Aktuell Gesamt:</span>
+          <span class="badge-value" id="valTotalCurrent">-- W</span>
+        </div>
+        
+        <!-- Sums Grid: Tagessumme & Jahressumme -->
+        <div class="sums-grid" id="btnOpenGraphDaily" title="Klicken für Live-Graph">
+          <div class="daily-sum-card">
+            <div class="card-top-title">TAGESSUMME</div>
+            <div class="daily-number">
+              <span id="valDailyKwh">0,00</span>
+              <span class="unit">kWh</span>
+            </div>
+            <div class="card-footer-sub" id="lblUpdated">Stand: --:--</div>
+          </div>
+          
+          <div class="year-sum-card">
+            <div class="card-top-title">JAHRESSUMME</div>
+            <div class="year-number">
+              <span id="valYearKwh">0</span>
+              <span class="unit">kWh</span>
+            </div>
+            <div class="card-footer-sub" id="lblLifetime">Gesamt: -- kWh</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Expandable Live Graph Section -->
+      <section class="graph-section" id="graphSection">
+        <div class="graph-section-header">
+          <span class="graph-section-title">LIVE & TAGESVERLAUF</span>
+          <span class="pill-peak" id="lblPeak">Spitze: -- W</span>
+        </div>
+        <div class="canvas-wrapper">
+          <canvas id="solarChart"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <!-- Settings Overlay (Zahnrad) -->
+    <div class="settings-modal" id="settingsModal">
+      <div class="settings-header">
+        <span>Einstellungen</span>
+        <button id="btnCloseSettings" class="icon-btn">✕</button>
+      </div>
+      <div class="settings-body">
+        <div class="form-group">
+          <label>Fritz!Box Adresse:</label>
+          <input type="text" id="cfgHost" value="192.168.178.1" placeholder="192.168.178.1">
+        </div>
+        <div class="form-group">
+          <label>Fritz!Box-Kennwort:</label>
+          <input type="password" id="cfgPassword" placeholder="Kennwort eingeben">
+        </div>
+        <div class="form-group">
+          <label>Aktualisierungs-Intervall:</label>
+          <select id="cfgInterval">
+            <option value="30">30 Sekunden</option>
+            <option value="60" selected>1 Minute (Standard)</option>
+            <option value="120">2 Minuten</option>
+            <option value="300">5 Minuten</option>
+          </select>
+        </div>
+        
+        <div class="form-group">
+          <label>Steckdosen-Zuweisung:</label>
+          <button id="btnDiscoverDevices" class="secondary-btn" type="button">Steckdosen suchen</button>
+          <div id="deviceSelectionList" class="device-select-area">
+            <small class="hint">Klicken zum Neuladen der Steckdosen von der Fritz!Box.</small>
+          </div>
+        </div>
+
+        <div class="status-msg" id="settingsStatusMsg"></div>
+      </div>
+      <div class="settings-footer">
+        <button id="btnSaveSettings" class="primary-btn">Speichern & Verbinden</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
