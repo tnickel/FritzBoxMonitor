@@ -281,10 +281,9 @@ body {
 .graph-section {
   display: none;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   padding-top: 6px;
   border-top: 1px solid var(--border-color);
-  height: 330px;
   flex: 1;
   min-height: 0;
 }
@@ -318,8 +317,8 @@ body {
   position: relative;
   background: rgba(0, 0, 0, 0.35);
   border-radius: 8px;
-  padding: 8px 10px 10px 6px;
-  min-height: 310px;
+  padding: 6px 8px 8px 6px;
+  min-height: 0;
 }
 
 #solarChart {

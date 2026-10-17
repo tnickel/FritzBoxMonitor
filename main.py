@@ -44,7 +44,7 @@ SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
 
 
-def get_top_right_coords(widget_width: int = 360, widget_height: int = 225, margin: int = 20) -> tuple[int, int]:
+def get_top_right_coords(widget_width: int = 370, widget_height: int = 260, margin: int = 20) -> tuple[int, int]:
     """
     Computes top-right screen coordinates taking the Windows taskbar into account.
     """
@@ -227,7 +227,7 @@ def main():
     poll_thread = threading.Thread(target=api.poll_loop, daemon=True)
     poll_thread.start()
 
-    widget_w, widget_h = 360, 225
+    widget_w, widget_h = 370, 260
     pos_x, pos_y = get_top_right_coords(widget_w, widget_h, margin=20)
 
     index_html = str((UI_DIR / "index.html").resolve())
