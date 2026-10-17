@@ -21,6 +21,46 @@ from fritz_client import FritzClient
 BASE_DIR = Path(__file__).parent.resolve()
 UI_DIR = BASE_DIR / "ui"
 
+# Make this process per-monitor DPI aware BEFORE any window is created.
+# Without this, pywebview only sets system-DPI-aware, and on scaled monitors
+# the WinForms window scale, DWM virtualization and the WebView2 rasterization
+# scale diverge — the widget renders inflated or cut off.
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # PMv2
+    except Exception:
+        pass
+
+
+def get_primary_monitor_scale() -> float:
+    """Effective DPI scale of the primary monitor (1.0, 1.25, 1.5, ...)."""
+    try:
+        class PT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        hmon = ctypes.windll.user32.MonitorFromPoint(PT(100, 100), 1)  # MONITOR_DEFAULTTOPRIMARY
+        dx = ctypes.c_uint()
+        dy = ctypes.c_uint()
+        ctypes.windll.shcore.GetDpiForMonitor(hmon, 0, ctypes.byref(dx), ctypes.byref(dy))  # MDT_EFFECTIVE_DPI
+        return (dx.value / 96.0) if dx.value > 0 else 1.0
+    except Exception:
+        return 1.0
+
+
+# The WinForms WebView2 control derives a wrong rasterization scale on scaled
+# monitors (observed 2.54 instead of 1.75), inflating the whole rendering.
+# Forcing the device scale factor at the Chromium level is the only reliable
+# counter. WebView2 reads this documented environment variable.
+_monitor_scale = get_primary_monitor_scale()
+if _monitor_scale != 1.0:
+    _extra_args = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
+    os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (
+        (_extra_args + " " if _extra_args else "")
+        + f"--force-device-scale-factor={_monitor_scale}"
+    )
+
 # Safe stdout/stderr redirection for pythonw.exe
 LOG_FILE = BASE_DIR / "widget.log"
 if sys.stdout is None:
@@ -130,6 +170,104 @@ class WidgetApi:
                 )
             except Exception as err:
                 logger.error(f"Resize error: {err}")
+
+    def nudge_size(self, fx: float, fy: float):
+        """
+        Scales the current window rect by the given factors. Used by the JS side
+        to self-correct the window size against the actual CSS viewport, which is
+        immune to any DPI-awareness quirks.
+        """
+        hwnd = self._get_hwnd()
+        if not hwnd:
+            return {"success": False}
+        try:
+            fx = min(max(float(fx), 0.25), 4.0)
+            fy = min(max(float(fy), 0.25), 4.0)
+            rect = wintypes.RECT()
+            ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            new_w = int(round((rect.right - rect.left) * fx))
+            new_h = int(round((rect.bottom - rect.top) * fy))
+            ctypes.windll.user32.SetWindowPos(
+                hwnd, 0, 0, 0, new_w, new_h,
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE
+            )
+            return {"success": True}
+        except Exception as err:
+            logger.error(f"Nudge error: {err}")
+            return {"success": False}
+
+    def _run_on_ui_thread(self, fn):
+        """Runs fn on the WinForms UI thread (WebView2 objects are STA-bound)."""
+        try:
+            from System import Action
+            self._main_window.native.BeginInvoke(Action(fn))
+        except Exception as e:
+            logger.warning(f"BeginInvoke failed ({e}), applying on calling thread")
+            fn()
+
+    def apply_display_fix(self):
+        """
+        Pins the WebView2 rasterization scale to the window's real DPI and
+        disables user zoom. The WinForms WebView2 control derives a wrong
+        rasterization scale on high-DPI monitors (observed 2.54 instead of
+        1.75), which inflates the rendering and breaks the fixed layout.
+        """
+        hwnd = self._get_hwnd()
+        if not hwnd:
+            return {"success": False}
+        try:
+            dpi = ctypes.windll.user32.GetDpiForWindow(hwnd)
+            scale = (dpi / 96.0) if dpi > 0 else 1.0
+        except Exception:
+            scale = 1.0
+
+        def apply():
+            try:
+                wv = self._main_window.native.webview
+                try:
+                    wv.ShouldDetectMonitorScaleChanges = False
+                    wv.RasterizationScale = scale
+                except Exception as e:
+                    logger.warning(f"RasterizationScale not settable: {e}")
+                core = wv.CoreWebView2
+                if core is not None:
+                    core.Settings.IsZoomControlEnabled = False
+                logger.info(f"Display fix applied: RasterizationScale={scale}, zoom control disabled")
+            except Exception as e:
+                logger.warning(f"Display fix failed: {e}")
+
+        self._run_on_ui_thread(apply)
+        return {"success": True, "scale": scale}
+
+    def _apply_zoom_fix(self):
+        try:
+            wv = self._main_window.native.webview
+            wv.ZoomFactor = 1.0
+            core = wv.CoreWebView2
+            if core is not None:
+                core.Settings.IsZoomControlEnabled = False
+                logger.info("WebView2 zoom reset to 100% and zoom control disabled")
+        except Exception as e:
+            logger.warning(f"Zoom fix failed: {e}")
+
+    def disable_web_zoom(self):
+        """
+        Resets any page zoom to 100% and disables user zoom (ctrl+scroll/pinch).
+        Accidental zooming shrinks the CSS viewport and cuts off the widget layout.
+        """
+        def wait_and_apply():
+            for _ in range(80):
+                if not self._running:
+                    return
+                try:
+                    if self._main_window.native.webview.CoreWebView2 is not None:
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.25)
+            self._run_on_ui_thread(self._apply_zoom_fix)
+
+        threading.Thread(target=wait_and_apply, daemon=True).start()
 
     def poll_loop(self):
         """
@@ -265,6 +403,8 @@ def main():
             api._hwnd = window.native.Handle.ToInt64()
         except Exception:
             pass
+        # Kill any active/persisted page zoom and block user zooming
+        api.disable_web_zoom()
 
     window.events.shown += on_shown
     webview.start()

@@ -40,6 +40,33 @@ const settingsStatusMsg = document.getElementById("settingsStatusMsg");
 let availableDevices = [];
 let selectedAins = [];
 
+// Block WebView2 page zoom (ctrl+mouse-wheel / precision-touchpad pinch).
+// Any zoom != 100% shrinks the CSS viewport and cuts off the fixed layout.
+window.addEventListener("wheel", (e) => {
+  if (e.ctrlKey) e.preventDefault();
+}, { passive: false });
+window.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && ["+", "-", "=", "0"].includes(e.key)) e.preventDefault();
+});
+
+// Verify that the CSS viewport matches the requested logical size and
+// self-correct the native window size. This works regardless of how the
+// DPI scaling of the system/window is configured.
+async function syncSize(width, height) {
+  if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.nudge_size) return;
+  for (let i = 0; i < 6; i++) {
+    if (Math.abs(window.innerWidth - width) <= 2 && Math.abs(window.innerHeight - height) <= 2) return;
+    const fx = window.innerWidth > 0 ? width / window.innerWidth : 1;
+    const fy = window.innerHeight > 0 ? height / window.innerHeight : 1;
+    try {
+      await window.pywebview.api.nudge_size(fx, fy);
+    } catch (e) {
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 90));
+  }
+}
+
 // Native Window Dragging on Header Mousedown (Butter-smooth, zero jump)
 widgetHeader.addEventListener("mousedown", (e) => {
   if (e.button === 0 && !e.target.closest(".actions")) {
@@ -51,9 +78,15 @@ widgetHeader.addEventListener("mousedown", (e) => {
 
 // Initialize when pywebview is ready
 window.addEventListener("pywebviewready", async () => {
+  // Pin the WebView2 rasterization scale to the real window DPI first,
+  // then bring the window size in line with the CSS design.
+  try {
+    if (window.pywebview.api.apply_display_fix) await window.pywebview.api.apply_display_fix();
+  } catch (e) { /* non-fatal */ }
+  await syncSize(370, 260);
   await loadWidgetData();
   await initSettings();
-  
+
   // Set up periodic update
   setInterval(loadWidgetData, 15000); // UI poll sync
 });
@@ -128,6 +161,7 @@ async function toggleGraph() {
     graphSection.classList.add("active");
     if (window.pywebview && window.pywebview.api) {
       await window.pywebview.api.resize_widget(370, 620);
+      await syncSize(370, 620);
     }
     initOrUpdateChart();
     await updateGraph();
@@ -141,6 +175,7 @@ async function toggleGraph() {
     graphSection.classList.remove("active");
     if (window.pywebview && window.pywebview.api) {
       await window.pywebview.api.resize_widget(370, 260);
+      await syncSize(370, 260);
     }
   }
 }
