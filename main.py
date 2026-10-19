@@ -5,22 +5,23 @@ Runs as a compact, fixed desktop widget in the top-right corner of the screen.
 
 import ctypes
 from ctypes import wintypes
+from datetime import datetime
 import logging
 import os
-from pathlib import Path
 import sys
 import threading
 import time
 from typing import Any, Dict, Optional
 import webview
 
+from app_paths import get_base_dir, get_resource_dir
 from autostart import is_autostart_enabled, set_autostart as set_autostart_registry
 from config_manager import load_config, save_config
 from energy_tracker import EnergyTracker
 from fritz_client import FritzClient
 
-BASE_DIR = Path(__file__).parent.resolve()
-UI_DIR = BASE_DIR / "ui"
+BASE_DIR = get_base_dir()
+UI_DIR = get_resource_dir() / "ui"
 
 # Make this process per-monitor DPI aware BEFORE any window is created.
 # Without this, pywebview only sets system-DPI-aware, and on scaled monitors
@@ -83,6 +84,9 @@ HTCAPTION = 2
 SWP_NOMOVE = 0x0002
 SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
+
+
+MONTHS_DE = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
 
 
 def get_top_right_coords(widget_width: int = 370, widget_height: int = 260, margin: int = 20) -> tuple[int, int]:
@@ -381,6 +385,34 @@ class WidgetApi:
             return {"success": True, "enabled": enabled}
         return {"success": False, "error": "Autostart konnte nicht in der Windows-Registry gespeichert werden."}
 
+    def _monthly_graph_series(self) -> Dict[str, Any]:
+        """
+        Monthly energy sums (kWh) of the last 12 months per socket, from the
+        FritzBox monthly stats stored in the snapshot. The last array value is
+        the current month (running total), the rest are complete months.
+        """
+        now = datetime.now()
+        labels = []
+        for i in range(11, -1, -1):
+            total = now.month - i
+            year = now.year
+            while total <= 0:
+                total += 12
+                year -= 1
+            labels.append(MONTHS_DE[total - 1])
+
+        snap_devs = {d.get("ain"): d for d in self._tracker.snapshot.get("devices", [])}
+        sockets_out = []
+        for s in self._latest_data.get("sockets", []):
+            d = snap_devs.get(s.get("ain"), {})
+            vals = list(d.get("energy_monthly_wh") or [])[-12:]
+            vals = [0.0] * (12 - len(vals)) + vals
+            sockets_out.append({
+                "name": s.get("name", ""),
+                "values_kwh": [round(v / 1000.0, 2) for v in vals],
+            })
+        return {"labels": labels, "sockets": sockets_out}
+
     def get_graph_data(self) -> Dict[str, Any]:
         history = self._tracker.get_history_for_graph()
         socket_names = [s.get("name", "") for s in self._latest_data.get("sockets", [])]
@@ -389,6 +421,7 @@ class WidgetApi:
             "today_kwh": self._latest_data.get("total_today_kwh", 0.0),
             "history": history,
             "socket_names": socket_names,
+            "monthly": self._monthly_graph_series(),
         }
 
     def get_config(self) -> Dict[str, Any]:

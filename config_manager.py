@@ -5,10 +5,11 @@ Saves and loads settings to/from data/config.json
 
 import json
 import os
-from pathlib import Path
 from typing import Any, Dict, List
 
-CONFIG_DIR = Path(__file__).parent / "data"
+from app_paths import get_base_dir
+
+CONFIG_DIR = get_base_dir() / "data"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG: Dict[str, Any] = {

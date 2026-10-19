@@ -113,6 +113,29 @@ Die Tagessumme wird aus der Differenz zum Zählerstand von Mitternacht gebildet.
 * `data/fritzbox_dump.json` — vollständiger Roh-Dump für Analysen
 * `data/fritz_snapshot.json` — die vom Widget gepflegte Datenstruktur (Zähler-Tagebuch wird mitgeschrieben)
 
+### Als EXE bauen (ohne Python-Installation auf dem Zielrechner)
+
+Das Widget lässt sich mit [PyInstaller](https://pyinstaller.org/) zu einer **einzigen `SolarMonitor.exe`** packen — Python und alle Bibliotheken sind eingebündelt, auf dem Zielrechner wird nur die [WebView2-Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) benötigt (bei Windows 10/11 meist bereits vorhanden).
+
+Selbst bauen (einmalig, auf einem Rechner mit Python 3.10+):
+
+```bat
+git clone https://github.com/tnickel/FritzBoxMonitor.git
+cd FritzBoxMonitor
+
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt pyinstaller
+
+build_exe.bat
+```
+
+Danach liegt die fertige Anwendung unter **`dist\SolarMonitor.exe`** (die Build-Skripte nutzen alternativ auch ein uv-venv).
+
+* Die EXE in einen beliebigen Ordner kopieren und starten — Konfiguration, Logs und Datendateien werden daneben in `data\` bzw. `widget.log` angelegt. Kopiert man die EXE mehrfach, ist jede Kopie eine eigene, unabhängige Installation.
+* Die Checkbox **„Bei PC-Start automatisch starten"** trägt im EXE-Modus die EXE selbst in den Windows-Autostart ein.
+* Der allererste Start kann einige Sekunden dauern (Entpacken + Virenscan), danach startet das Widget in ~3 Sekunden.
+* Die EXE selbst liegt nicht im Repository (nur das Rezept: `SolarMonitor.spec` + `build_exe.bat`), damit das Repo schlank bleibt — wer sie fertig möchte, baut sie mit den drei Befehlen oben.
+
 ---
 
 ## 📄 Lizenz

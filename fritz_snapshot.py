@@ -17,9 +17,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app_paths import get_base_dir
+
 logger = logging.getLogger("FritzSnapshot")
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = get_base_dir() / "data"
 SNAPSHOT_FILE = DATA_DIR / "fritz_snapshot.json"
 DUMP_FILE = DATA_DIR / "fritzbox_dump.json"
 

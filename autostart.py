@@ -13,21 +13,24 @@ if sys.platform == "win32":
 
 logger = logging.getLogger("Autostart")
 
-BASE_DIR = Path(__file__).parent.resolve()
+from app_paths import get_base_dir
+
 RUN_KEY_PATH = r"Software\Microsoft\Windows\CurrentVersion\Run"
 VALUE_NAME = "FritzBoxSolarMonitor"
 
 
 def _launch_command() -> str:
     """
-    Command for the Run key: the running interpreter (preferring pythonw.exe,
-    so no console window appears) plus the path to main.py.
+    Command for the Run key: the frozen .exe itself, or the running
+    interpreter (preferring pythonw.exe, so no console window) plus main.py.
     """
+    if getattr(sys, "frozen", False):
+        return f'"{Path(sys.executable)}"'
     exe = Path(sys.executable)
     pythonw = exe.with_name("pythonw.exe")
     if pythonw.exists():
         exe = pythonw
-    return f'"{exe}" "{BASE_DIR / "main.py"}"'
+    return f'"{exe}" "{get_base_dir() / "main.py"}"'
 
 
 def is_autostart_enabled() -> bool:

@@ -312,6 +312,34 @@ body {
   color: #f59e0b;
 }
 
+.graph-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.graph-tab {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 3px 9px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.graph-tab:hover {
+  color: var(--text-primary);
+}
+
+.graph-tab.active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #0f172a;
+}
+
 .canvas-wrapper {
   flex: 1;
   position: relative;

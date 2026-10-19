@@ -11,9 +11,9 @@ is covered even when the app is started later.
 from datetime import datetime
 import json
 import logging
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app_paths import get_base_dir
 from fritz_snapshot import (
     build_live_snapshot,
     last_known_reading,
@@ -25,7 +25,7 @@ from fritz_snapshot import (
 
 logger = logging.getLogger("EnergyTracker")
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = get_base_dir() / "data"
 BASELINES_FILE = DATA_DIR / "energy_baselines.json"
 HISTORY_FILE = DATA_DIR / "history.json"
 

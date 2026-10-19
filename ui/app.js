@@ -23,8 +23,13 @@ const btnOpenGraphDaily = document.getElementById("btnOpenGraphDaily");
 // Graph Section Elements
 const graphSection = document.getElementById("graphSection");
 const lblPeak = document.getElementById("lblPeak");
+const tabLive = document.getElementById("tabLive");
+const tabMonths = document.getElementById("tabMonths");
 let chartInstance = null;
 let isGraphExpanded = false;
+let currentView = "live"; // "live" | "months"
+
+const SOCKET_COLORS = ["#fbbf24", "#38bdf8", "#34d399"];
 
 // Settings Elements
 const settingsModal = document.getElementById("settingsModal");
@@ -205,11 +210,135 @@ window.addEventListener("resize", () => {
 btnToggleGraph.addEventListener("click", toggleGraph);
 btnOpenGraphDaily.addEventListener("click", toggleGraph);
 
+// View switch: live line chart vs monthly bar chart
+tabLive.addEventListener("click", () => setGraphView("live"));
+tabMonths.addEventListener("click", () => setGraphView("months"));
+
+function setGraphView(view) {
+  if (currentView === view) return;
+  currentView = view;
+  tabLive.classList.toggle("active", view === "live");
+  tabMonths.classList.toggle("active", view === "months");
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
+  }
+  initOrUpdateChart();
+  updateGraph();
+}
+
 function initOrUpdateChart() {
   if (chartInstance) {
     chartInstance.resize();
     return;
   }
+  if (currentView === "months") {
+    createMonthsChart();
+  } else {
+    createLiveChart();
+  }
+}
+
+function createMonthsChart() {
+  const canvas = document.getElementById("solarChart");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+
+  chartInstance = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: [],
+      datasets: [0, 1, 2].map((i) => ({
+        label: "",
+        data: [],
+        backgroundColor: SOCKET_COLORS[i],
+        borderRadius: 2,
+        maxBarThickness: 18,
+      })),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 250 },
+      layout: {
+        padding: { bottom: 12, left: 2, right: 6, top: 4 },
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: "top",
+          labels: {
+            boxWidth: 8,
+            boxHeight: 8,
+            usePointStyle: true,
+            color: "#94a3b8",
+            font: { size: 9 },
+            padding: 6,
+          },
+        },
+        tooltip: {
+          padding: 6,
+          titleFont: { size: 10 },
+          bodyFont: { size: 10 },
+          callbacks: {
+            label: (ctx) => ` ${ctx.dataset.label}: ${(ctx.parsed.y).toLocaleString("de-DE")} kWh`,
+            footer: (items) => {
+              const sum = items.reduce((acc, it) => acc + it.parsed.y, 0);
+              return `Gesamt: ${sum.toLocaleString("de-DE", { maximumFractionDigits: 1 })} kWh`;
+            },
+          },
+          footerFont: { size: 10, weight: "bold" },
+        },
+      },
+      scales: {
+        x: {
+          stacked: true,
+          grid: { color: "rgba(255, 255, 255, 0.05)" },
+          ticks: {
+            color: "#94a3b8",
+            font: { size: 8 },
+            maxRotation: 0,
+          },
+        },
+        y: {
+          stacked: true,
+          beginAtZero: true,
+          grid: { color: "rgba(255, 255, 255, 0.05)" },
+          ticks: {
+            color: "#94a3b8",
+            font: { size: 8 },
+            callback: (v) => `${v} kWh`,
+          },
+        },
+      },
+    },
+  });
+}
+
+function updateMonthsChart(monthly) {
+  if (!chartInstance || currentView !== "months") return;
+  const labels = monthly.labels || [];
+  const sockets = monthly.sockets || [];
+  lblPeak.textContent = "";
+
+  sockets.forEach((s, i) => {
+    if (i >= chartInstance.data.datasets.length) return;
+    chartInstance.data.datasets[i].label = s.name || "";
+    chartInstance.data.datasets[i].data = s.values_kwh || [];
+  });
+  chartInstance.data.labels = labels;
+  chartInstance.update();
+
+  // Peak pill shows the strongest single month (sum over sockets)
+  let max = 0;
+  for (let i = 0; i < labels.length; i++) {
+    const sum = sockets.reduce((acc, s) => acc + ((s.values_kwh || [])[i] || 0), 0);
+    if (sum > max) max = sum;
+  }
+  lblPeak.textContent = `Stärkster Monat: ${max.toLocaleString("de-DE", { maximumFractionDigits: 1 })} kWh`;
+}
+
+function createLiveChart() {
   const canvas = document.getElementById("solarChart");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
@@ -328,6 +457,11 @@ async function updateGraph() {
   try {
     const data = await window.pywebview.api.get_graph_data();
     if (!data) return;
+
+    if (currentView === "months") {
+      updateMonthsChart(data.monthly || { labels: [], sockets: [] });
+      return;
+    }
 
     const history = data.history || [];
     let peak = 0;
