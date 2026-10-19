@@ -14,6 +14,7 @@ import time
 from typing import Any, Dict, Optional
 import webview
 
+from autostart import is_autostart_enabled, set_autostart as set_autostart_registry
 from config_manager import load_config, save_config
 from energy_tracker import EnergyTracker
 from fritz_client import FritzClient
@@ -109,6 +110,7 @@ def get_top_right_coords(widget_width: int = 370, widget_height: int = 260, marg
 
 class WidgetApi:
     def __init__(self):
+        logger.info("Startup: WidgetApi wird initialisiert")
         self._config = load_config()
         self._client = FritzClient(
             host=self._config.get("host", "192.168.178.1"),
@@ -128,16 +130,21 @@ class WidgetApi:
         self._hwnd: Optional[int] = None
         self._running = True
         self._poll_event = threading.Event()
+        logger.info("Startup: WidgetApi initialisiert")
 
     def _get_hwnd(self) -> Optional[int]:
         if self._hwnd:
             return self._hwnd
         if self._main_window and hasattr(self._main_window, "native"):
-            try:
-                self._hwnd = self._main_window.native.Handle.ToInt64()
+            # Reading .Handle from a non-UI thread can deadlock (GIL vs STA);
+            # fetch it on the UI thread instead. on_shown caches it anyway.
+            res = self._on_ui_thread_result(
+                lambda: self._main_window.native.Handle.ToInt64(), timeout=3.0
+            )
+            if "value" in res:
+                self._hwnd = res["value"]
                 return self._hwnd
-            except Exception:
-                return None
+            logger.warning(f"Could not fetch hwnd: {res.get('error')}")
         return None
 
     def start_drag(self):
@@ -205,6 +212,30 @@ class WidgetApi:
             logger.warning(f"BeginInvoke failed ({e}), applying on calling thread")
             fn()
 
+    def _on_ui_thread_result(self, fn, timeout=5.0):
+        """
+        Runs fn on the UI thread and waits for its result. The calling thread
+        releases the GIL while waiting, so the UI thread can always proceed.
+        Accessing .NET/WebView2 properties directly from a Python thread can
+        deadlock the whole interpreter (GIL held while waiting for the STA
+        marshal, UI thread waiting for the GIL) — never do that.
+        """
+        result: Dict[str, Any] = {}
+        done = threading.Event()
+
+        def run():
+            try:
+                result["value"] = fn()
+            except Exception as e:
+                result["error"] = e
+            finally:
+                done.set()
+
+        self._run_on_ui_thread(run)
+        if not done.wait(timeout):
+            result["error"] = TimeoutError("UI-Thread antwortet nicht")
+        return result
+
     def apply_display_fix(self):
         """
         Pins the WebView2 rasterization scale to the window's real DPI and
@@ -212,17 +243,13 @@ class WidgetApi:
         rasterization scale on high-DPI monitors (observed 2.54 instead of
         1.75), which inflates the rendering and breaks the fixed layout.
         """
-        hwnd = self._get_hwnd()
-        if not hwnd:
-            return {"success": False}
-        try:
-            dpi = ctypes.windll.user32.GetDpiForWindow(hwnd)
-            scale = (dpi / 96.0) if dpi > 0 else 1.0
-        except Exception:
-            scale = 1.0
-
         def apply():
             try:
+                hwnd = self._get_hwnd()
+                scale = 1.0
+                if hwnd:
+                    dpi = ctypes.windll.user32.GetDpiForWindow(hwnd)
+                    scale = (dpi / 96.0) if dpi > 0 else 1.0
                 wv = self._main_window.native.webview
                 try:
                     wv.ShouldDetectMonitorScaleChanges = False
@@ -237,7 +264,7 @@ class WidgetApi:
                 logger.warning(f"Display fix failed: {e}")
 
         self._run_on_ui_thread(apply)
-        return {"success": True, "scale": scale}
+        return {"success": True}
 
     def _apply_zoom_fix(self):
         try:
@@ -256,15 +283,25 @@ class WidgetApi:
         Accidental zooming shrinks the CSS viewport and cuts off the widget layout.
         """
         def wait_and_apply():
-            for _ in range(80):
+            ready = False
+            for i in range(80):
                 if not self._running:
                     return
-                try:
-                    if self._main_window.native.webview.CoreWebView2 is not None:
-                        break
-                except Exception:
-                    pass
+                # NEVER touch .native.webview.CoreWebView2 directly from this
+                # thread — that deadlocks the interpreter (GIL vs STA marshal).
+                res = self._on_ui_thread_result(
+                    lambda: self._main_window.native.webview.CoreWebView2 is not None,
+                    timeout=2.0,
+                )
+                if res.get("value"):
+                    ready = True
+                    logger.info(f"Startup: CoreWebView2 bereit nach {i * 0.25:.1f}s")
+                    break
+                if "error" in res and not isinstance(res["error"], TimeoutError):
+                    logger.warning(f"Startup: CoreWebView2-Check fehlerhaft: {res['error']}")
                 time.sleep(0.25)
+            if not ready:
+                logger.warning("Startup: CoreWebView2 nach 20s NICHT bereit (WebView2 haengt?)")
             self._run_on_ui_thread(self._apply_zoom_fix)
 
         threading.Thread(target=wait_and_apply, daemon=True).start()
@@ -294,11 +331,19 @@ class WidgetApi:
             selected_ains = self._config.get("socket_ains", [])
             socket_labels = self._config.get("socket_labels", {})
 
+            # Fetch device stats once per poll (year sum + snapshot)
+            stats_by_ain: Dict[str, Any] = {}
+            for ain in selected_ains:
+                try:
+                    stats_by_ain[ain] = self._client.get_device_stats(ain)
+                except Exception as e:
+                    logger.warning(f"Could not fetch stats for {ain}: {e}")
+
             # Update readings
             res = self._tracker.update_reading(
                 devices=devices,
                 selected_ains=selected_ains,
-                stats_callback=self._client.get_device_stats,
+                stats_by_ain=stats_by_ain,
             )
 
             # Apply user custom labels if any
@@ -309,6 +354,9 @@ class WidgetApi:
 
             res["status"] = "online"
             self._latest_data = res
+            logger.info(
+                f"Poll ok: {res['total_power_w']} W, Tagessumme {res['total_today_kwh']} kWh"
+            )
 
         except Exception as e:
             logger.error(f"Poll error: {e}")
@@ -318,6 +366,20 @@ class WidgetApi:
     # JS API Methods
     def get_latest_data(self) -> Dict[str, Any]:
         return self._latest_data
+
+    def log_event(self, message: str) -> Dict[str, Any]:
+        """Startup markers and errors from the JS side, for diagnosis."""
+        logger.info(f"[UI] {message}")
+        return {"ok": True}
+
+    def get_autostart(self) -> bool:
+        return is_autostart_enabled()
+
+    def set_autostart(self, enabled: bool) -> Dict[str, Any]:
+        enabled = bool(enabled)
+        if set_autostart_registry(enabled):
+            return {"success": True, "enabled": enabled}
+        return {"success": False, "error": "Autostart konnte nicht in der Windows-Registry gespeichert werden."}
 
     def get_graph_data(self) -> Dict[str, Any]:
         history = self._tracker.get_history_for_graph()
@@ -368,10 +430,13 @@ class WidgetApi:
 
 
 def main():
+    logger.info("Startup: main() beginnt")
     api = WidgetApi()
 
     # Pre-poll once before showing window
+    logger.info("Startup: Pre-Poll startet")
     api._do_poll()
+    logger.info("Startup: Pre-Poll abgeschlossen")
 
     # Start background polling thread
     poll_thread = threading.Thread(target=api.poll_loop, daemon=True)
@@ -397,8 +462,10 @@ def main():
         on_top=False,
     )
     api._main_window = window
+    logger.info("Startup: Fensterobjekt erstellt, starte webview.start()")
 
     def on_shown():
+        logger.info("Startup: shown-Event (Fenster wurde sichtbar)")
         try:
             api._hwnd = window.native.Handle.ToInt64()
         except Exception:
@@ -408,6 +475,7 @@ def main():
 
     window.events.shown += on_shown
     webview.start()
+    logger.info("Startup: webview.start() zurueckgekehrt (App beendet)")
 
 
 if __name__ == "__main__":

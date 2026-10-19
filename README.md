@@ -88,6 +88,7 @@ Das Widget startet lautlos im Hintergrund und positioniert sich oben rechts auf 
 2. **FRITZ!Box Kennwort:** Dein Kennwort für die FRITZ!Box-Oberfläche.
 3. **Aktualisierungsintervall:** Frei wählbar zwischen 30 Sekunden, 1 Minute (Standard), 2 Minuten oder 5 Minuten.
 4. **Steckdosen-Zuweisung:** Klicke auf *„Steckdosen suchen“*, um alle an deiner FRITZ!Box angemeldeten Smart-Home-Energiesteckdosen abzurufen und die 3 Solardosen zuzuweisen.
+5. **Bei PC-Start automatisch starten:** Hakt du diese Box an, trägt sich das Widget in den Windows-Autostart ein (pro Benutzer, ohne Konsole via `pythonw.exe`). Die Änderung wird sofort beim Klick übernommen und gilt beim nächsten Windows-Start.
 
 ---
 
@@ -101,6 +102,16 @@ Das Widget startet lautlos im Hintergrund und positioniert sich oben rechts auf 
 * **Datenschutz & Lokale Speicherung:**
   * Das FRITZ!Box-Kennwort und die Messdaten werden ausschließlich lokal auf deinem Rechner in `data/config.json` bzw. `data/energy_baselines.json` gespeichert.
   * Die `.gitignore` stellt sicher, dass keinerlei Passwörter oder persönliche Messstände in Git oder auf GitHub landen.
+
+### Tagessumme über Neustarts hinweg
+
+Die Tagessumme wird aus der Differenz zum Zählerstand von Mitternacht gebildet. Damit das auch funktioniert, wenn das Widget erst später am Tag gestartet wird, speichert es bei jeder Abfrage den letzten Zählerstand jeder Steckdose in der Snapshot-Datei `data/fritz_snapshot.json` (Live-Werte, Energie-Statistiken der Box und das Zähler-Tagebuch). Beim Start dient der letzte bekannte Stand vom Vortag als Basis — die Tagessumme umfasst dann den ganzen Tag, nicht erst ab Programmstart. Voraussetzung ist nur, dass das Widget (oder das Diagnose-Skript, siehe unten) einmal pro Tag läuft; nachts produzieren die Anlagen ohnehin nichts.
+
+### Diagnose-Skript
+
+`python fritz_snapshot.py` zieht alle verfügbaren Daten aus der FRITZ!Box (alle Geräte, Live-Werte, Temperatur-/Spannungs-/Leistungsverläufe, Tages- und Monatsstatistiken) und legt sie ab als:
+* `data/fritzbox_dump.json` — vollständiger Roh-Dump für Analysen
+* `data/fritz_snapshot.json` — die vom Widget gepflegte Datenstruktur (Zähler-Tagebuch wird mitgeschrieben)
 
 ---
 

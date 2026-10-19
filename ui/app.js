@@ -32,6 +32,7 @@ const btnCloseSettings = document.getElementById("btnCloseSettings");
 const cfgHost = document.getElementById("cfgHost");
 const cfgPassword = document.getElementById("cfgPassword");
 const cfgInterval = document.getElementById("cfgInterval");
+const cfgAutostart = document.getElementById("cfgAutostart");
 const btnDiscoverDevices = document.getElementById("btnDiscoverDevices");
 const deviceSelectionList = document.getElementById("deviceSelectionList");
 const btnSaveSettings = document.getElementById("btnSaveSettings");
@@ -39,6 +40,16 @@ const settingsStatusMsg = document.getElementById("settingsStatusMsg");
 
 let availableDevices = [];
 let selectedAins = [];
+
+// Startup markers from the JS side -> widget.log (diagnosis of startup hangs)
+function uiLog(msg) {
+  if (window.pywebview && window.pywebview.api && window.pywebview.api.log_event) {
+    try { window.pywebview.api.log_event(msg); } catch (e) { /* bridge not ready */ }
+  }
+}
+window.addEventListener("error", (e) => {
+  uiLog(`JS-Fehler: ${e.message} (${(e.filename || "").split("/").pop()}:${e.lineno})`);
+});
 
 // Block WebView2 page zoom (ctrl+mouse-wheel / precision-touchpad pinch).
 // Any zoom != 100% shrinks the CSS viewport and cuts off the fixed layout.
@@ -78,14 +89,19 @@ widgetHeader.addEventListener("mousedown", (e) => {
 
 // Initialize when pywebview is ready
 window.addEventListener("pywebviewready", async () => {
+  uiLog("pywebviewready gefeuert");
   // Pin the WebView2 rasterization scale to the real window DPI first,
   // then bring the window size in line with the CSS design.
   try {
     if (window.pywebview.api.apply_display_fix) await window.pywebview.api.apply_display_fix();
-  } catch (e) { /* non-fatal */ }
+    uiLog("apply_display_fix aufgerufen");
+  } catch (e) { uiLog(`apply_display_fix Fehler: ${e}`); }
   await syncSize(370, 260);
+  uiLog("syncSize(370, 260) abgeschlossen");
   await loadWidgetData();
+  uiLog("erste Daten geladen");
   await initSettings();
+  uiLog("Einstellungen initialisiert");
 
   // Set up periodic update
   setInterval(loadWidgetData, 15000); // UI poll sync
@@ -370,10 +386,30 @@ async function initSettings() {
       cfgInterval.value = String(cfg.interval_seconds || 60);
       selectedAins = cfg.socket_ains || [];
     }
+    if (window.pywebview.api.get_autostart) {
+      cfgAutostart.checked = await window.pywebview.api.get_autostart();
+    }
   } catch (e) {
     console.error("Failed to load config:", e);
   }
 }
+
+// Autostart checkbox applies immediately (independent of Speichern)
+cfgAutostart.addEventListener("change", async () => {
+  if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.set_autostart) return;
+  try {
+    const res = await window.pywebview.api.set_autostart(cfgAutostart.checked);
+    if (!res.success) throw new Error(res.error || "Unbekannter Fehler");
+    settingsStatusMsg.textContent = res.enabled
+      ? "Autostart aktiviert - das Widget startet künftig mit dem PC."
+      : "Autostart deaktiviert.";
+    settingsStatusMsg.className = "status-msg success";
+  } catch (e) {
+    cfgAutostart.checked = !cfgAutostart.checked; // revert on failure
+    settingsStatusMsg.textContent = `Autostart konnte nicht geändert werden: ${e}`;
+    settingsStatusMsg.className = "status-msg error";
+  }
+});
 
 // Discover Devices
 btnDiscoverDevices.addEventListener("click", async () => {

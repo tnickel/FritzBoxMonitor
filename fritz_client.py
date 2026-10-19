@@ -12,6 +12,8 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional
 
+from fritz_snapshot import parse_stats_xml
+
 logger = logging.getLogger("FritzClient")
 
 
@@ -231,31 +233,9 @@ class FritzClient:
 
     def get_device_stats(self, ain: str) -> Dict[str, Any]:
         """
-        Retrieves historical power and energy stats for a specific AIN.
+        Retrieves historical stats for a specific AIN, parsed into a plain
+        structure: {element: [{"grid": "daily"|"monthly"|..., "grid_s": ...,
+        "datatime": "...", "values": [...]}]} (see fritz_snapshot.parse_stats_xml).
         """
         xml_text = self._execute_cmd("getbasicdevicestats", {"ain": ain})
-        root = ET.fromstring(xml_text)
-
-        result: Dict[str, Any] = {"power": [], "energy_hourly": [], "energy_monthly": []}
-
-        # Parse energy stats
-        energy_node = root.find("energy")
-        if energy_node is not None:
-            for stats in energy_node.findall("stats"):
-                grid = int(stats.get("grid", "0"))
-                if stats.text:
-                    raw_vals = [int(v) for v in stats.text.strip().split(",") if v.strip() and v.strip() != "-"]
-                    if grid == 3600:  # Hourly values
-                        result["energy_hourly"] = raw_vals
-                    elif grid == 2678400:  # Monthly values
-                        result["energy_monthly"] = raw_vals
-
-        # Parse power stats (100mW or W intervals)
-        power_node = root.find("power")
-        if power_node is not None:
-            stats = power_node.find("stats")
-            if stats is not None and stats.text:
-                raw_vals = [float(v) for v in stats.text.strip().split(",") if v.strip() and v.strip() != "-"]
-                result["power"] = raw_vals
-
-        return result
+        return parse_stats_xml(xml_text)
